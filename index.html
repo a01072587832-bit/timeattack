@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>timeattack</title>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;background:#fff;overflow:hidden;user-select:none;font-family:sans-serif}
+.stage{position:relative;width:100vw;height:100vh;display:grid;place-items:center;cursor:pointer}
+.stage.locked{cursor:default}
+
+#watchWrap{position:absolute;z-index:20;transition:transform 5s cubic-bezier(.22,1,.36,1),opacity 4.5s}
+#watchWrap img{width:320px;height:320px;object-fit:contain}
+#watchWrap.exit{transform:translateY(-115vh);opacity:0;pointer-events:none}
+
+#phrase{position:relative;z-index:15;pointer-events:none;font:66px "Gungsuh","궁서",serif;letter-spacing:.06em;color:#18181b;opacity:0;transform:translateY(70px);transition:.65s}
+#phrase.rise{opacity:1;transform:translateY(0)}
+#phrase.gone{opacity:0;transform:translateY(-90px);transition:1.2s}
+
+#ticketPrompt{position:absolute;z-index:30;display:flex;flex-direction:column;align-items:center;gap:22px;opacity:0;pointer-events:none;transform:translateY(35px);transition:.7s}
+#ticketPrompt.show{opacity:1;pointer-events:auto;transform:translateY(0)}
+#ticketPrompt.hide{opacity:0;transform:translateY(-45px);pointer-events:none}
+#ticketPrompt label{font:42px "Gungsuh","궁서",serif;color:#18181b;letter-spacing:.04em}
+#ticketForm{display:flex;align-items:center;gap:12px}
+#ticketTime{padding:13px 18px;font:20px sans-serif;border:1px solid #d4d4d8;border-radius:10px;background:#fff;color:#18181b}
+#ticketSubmit{padding:13px 22px;border:0;border-radius:10px;background:#18181b;color:#fff;font-size:16px;cursor:pointer}
+
+#clockStage{position:absolute;inset:0;z-index:10;opacity:0;pointer-events:none;display:grid;place-items:center;transition:opacity .5s}
+#clockStage.active{opacity:1;pointer-events:auto}
+#clockBox{display:flex;flex-direction:column;align-items:center;gap:16px;padding:20px 32px 24px;border-radius:18px;background:rgba(255,255,255,.94)}
+#cvs{width:min(960px,90vw);height:auto;transition:transform .4s}
+#cvs.pulse-ticket{animation:beat .9s ease-in-out infinite}
+@keyframes beat{50%{transform:scale(1.12)}}
+
+#countryWrap{opacity:0;transform:translateY(12px);transition:1s}
+#countryWrap.show{opacity:1;transform:translateY(0)}
+#country{padding:10px 22px;font-size:16px;border:1.5px solid #d4d4d8;border-radius:999px;background:#fff;color:#18181b;cursor:pointer}
+
+#ticketInfo{position:fixed;top:28px;left:32px;z-index:35;color:#18181b;font-size:17px;line-height:1.6;opacity:0;transform:translateY(-8px);transition:.8s;pointer-events:none}
+#ticketInfo.show{opacity:1;transform:translateY(0)}
+#ticketInfo strong{font-size:20px}
+
+#floatLayer{position:fixed;inset:0;pointer-events:none;z-index:25}
+.photo{position:absolute;width:104px;height:104px;object-fit:cover;border-radius:50%;transform:translate(-50%,-50%) scale(.2);opacity:0;transition:transform .45s cubic-bezier(.22,1.3,.36,1),opacity 1.1s}
+.photo.in{opacity:1;transform:translate(-50%,-50%) scale(1)}
+.photo.fade-out{opacity:0!important;transition:opacity 1.2s!important}
+
+#spot{position:fixed;inset:0;z-index:40;pointer-events:none;opacity:0;transition:opacity .5s}
+#spot.show{opacity:1}
+#hero{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:320px;height:320px;object-fit:contain;border-radius:18px}
+#bubble{position:absolute;left:calc(50% - 185px);top:50%;transform:translate(-100%,-50%) scale(.8);padding:16px 26px;border-radius:22px;background:#18181b;color:#fff;font-size:24px;font-weight:600;box-shadow:0 14px 30px #0003;opacity:0;transition:.35s}
+#bubble:after{content:"";position:absolute;right:-9px;top:50%;transform:translateY(-50%);border:9px solid transparent;border-right:0;border-left-color:#18181b}
+#bubble.pop{transform:translate(-100%,-50%) scale(1);opacity:1}
+
+@media(max-width:700px){
+ #phrase{font-size:clamp(28px,7vw,48px)}
+ #ticketPrompt label{font-size:clamp(24px,6vw,36px)}
+ #clockBox{padding:12px 8px}
+ #hero{width:min(320px,70vw);height:min(320px,70vw)}
+ #bubble{left:calc(50% - min(185px,35vw));font-size:16px;padding:10px 14px}
+}
+</style>
+</head>
+
+<body>
+<main class="stage" id="stage">
+
+ <div id="watchWrap">
+  <img src="회중시계.png" alt="회중시계">
+ </div>
+
+ <div id="phrase">성공할 준비, 되셨나요?</div>
+
+ <div id="ticketPrompt">
+  <label for="ticketTime">티켓팅 시간을 입력해주세요</label>
+  <form id="ticketForm">
+   <input id="ticketTime" type="time" step="1" required>
+   <button id="ticketSubmit" type="submit">확인</button>
+  </form>
+ </div>
+
+ <section id="clockStage">
+  <div id="clockBox">
+   <canvas id="cvs" width="960" height="220"></canvas>
+
+   <div id="countryWrap" onclick="event.stopPropagation()">
+    <select id="country">
+     <option value="Asia/Seoul">대한민국 (서울)</option>
+     <option value="America/New_York">미국 (뉴욕)</option>
+     <option value="Europe/London">영국 (런던)</option>
+     <option value="Asia/Tokyo">일본 (도쿄)</option>
+     <option value="Europe/Paris">프랑스 (파리)</option>
+     <option value="Australia/Sydney">호주 (시드니)</option>
+    </select>
+   </div>
+  </div>
+ </section>
+
+</main>
+
+<div id="ticketInfo">
+ 티켓팅 시간<br>
+ <strong id="ticketTimeText">--:--:--</strong>
+</div>
+
+<div id="floatLayer"></div>
+
+<div id="spot">
+ <div id="bubble">성공했어요?</div>
+ <img id="hero" alt="">
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const cvs=$("cvs"),ctx=cvs.getContext("2d");
+const off=document.createElement("canvas");
+off.width=cvs.width;
+off.height=cvs.height;
+const octx=off.getContext("2d");
+
+let step=0;
+let tz=$("country").value;
+let lastSig="",lastMin="";
+let dots=[],photos=[],nextPhoto=1;
+let photoSpeed=.65,assembling=false,t0=0;
+let ticketTime="",ticketUrgent=false,ticketDone=false;
+let previousRemaining=null,lastParts=null;
+
+const pad=n=>String(n).padStart(2,"0");
+
+function getNow(){
+ const parts=new Intl.DateTimeFormat("en-GB",{
+  timeZone:tz,hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false
+ }).formatToParts(new Date());
+
+ const p=Object.fromEntries(parts.map(v=>[v.type,v.value]));
+
+ return {
+  h:p.hour==="24"?"00":p.hour,
+  m:p.minute,
+  s:p.second
+ };
+}
+
+function remainingToTicket(){
+ if(!ticketTime)return Infinity;
+
+ const [h,m,s]=ticketTime.split(":").map(Number);
+ const t=getNow();
+
+ return (
+  h*3600+m*60+s-
+  (+t.h*3600 + +t.m*60 + +t.s)+86400
+ )%86400;
+}
+
+function sampleDots(t){
+ const color=ticketUrgent?"#dc2626":"#18181b";
+ cvs.classList.toggle("pulse-ticket",ticketUrgent);
+
+ octx.clearRect(0,0,off.width,off.height);
+ octx.textBaseline="middle";
+ octx.font="700 108px serif";
+ octx.fillStyle=color;
+
+ octx.fillText(t.h,80,114);
+ octx.fillText(":",300,114);
+ octx.fillText(t.m,380,114);
+ octx.fillText(":",600,114);
+ octx.fillText(t.s,680,114);
+
+ const data=octx.getImageData(0,0,off.width,off.height).data;
+ const targets=[];
+
+ for(let y=0;y<off.height;y+=4){
+  for(let x=0;x<off.width;x+=4){
+   if(data[(y*off.width+x)*4+3]>110){
+    targets.push({
+     tx:x,ty:y,color,
+     group:x<280?"h":x<360?"c1":x<580?"m":x<660?"c2":"s"
+    });
+   }
+  }
+ }
+
+ return targets;
+}
+
+function buildClock(t){
+ const targets=sampleDots(t);
+ const ys=targets.map(p=>p.ty);
+ const minY=Math.min(...ys),maxY=Math.max(...ys);
+ const span=Math.max(1,maxY-minY);
+
+ dots=targets.map(p=>{
+  const ratio=(maxY-p.ty)/span;
+
+  return {
+   ...p,
+   sx:p.tx+(Math.random()-.5)*90,
+   sy:-80-Math.random()*260,
+   delay:Math.random()*.85,
+   dur:1+Math.random()*.8,
+   phase:Math.random()*10
+  };
+ });
+
+ lastParts={h:t.h,m:t.m,s:t.s};
+ t0=performance.now();
+ assembling=true;
+}
+
+function updateClock(t,now){
+ const targets=sampleDots(t);
+ const parts={h:t.h,m:t.m,s:t.s};
+ const next=[];
+
+ for(const group of ["h","c1","m","c2","s"]){
+  const old=dots.filter(d=>d.group===group);
+  const fresh=targets.filter(d=>d.group===group);
+  const changed=["h","m","s"].includes(group)&&lastParts?.[group]!==parts[group];
+
+  if(!changed){
+   old.forEach(d=>{
+    d.color=fresh[0]?.color||d.color;
+    next.push(d);
+   });
+   continue;
+  }
+
+  fresh.forEach((p,i)=>{
+   const from=old[i%Math.max(old.length,1)];
+
+   next.push({
+    ...p,
+    sx:from?from.tx+(Math.random()-.5)*12:p.tx+(Math.random()-.5)*45,
+    sy:from?from.ty+(Math.random()-.5)*12:p.ty+(Math.random()-.5)*35,
+    moveStart:now,
+    dur:.62,
+    phase:Math.random()*10
+   });
+  });
+ }
+
+ dots=next;
+ lastParts=parts;
+ t0=now;
+}
+
+function spawnPoint(){
+ const b=$("clockBox").getBoundingClientRect();
+ const pad=64;
+
+ for(let i=0;i<30;i++){
+  const x=pad+Math.random()*(innerWidth-2*pad);
+  const y=pad+Math.random()*(innerHeight-2*pad);
+
+  if(x<b.left-pad||x>b.right+pad||y<b.top-pad||y>b.bottom+pad){
+   return{x,y};
+  }
+ }
+
+ return{x:pad,y:pad};
+}
+
+function addPhoto(n){
+ if(n<1||n>60)return;
+
+ const file=`${pad(n)}.png`;
+ const el=document.createElement("img");
+
+ el.src=file;
+ el.className="photo";
+ el.onerror=()=>el.remove();
+
+ const {x,y}=spawnPoint();
+ const a=Math.random()*Math.PI*2;
+
+ el.style.left=`${x}px`;
+ el.style.top=`${y}px`;
+
+ $("floatLayer").append(el);
+ requestAnimationFrame(()=>el.classList.add("in"));
+
+ photos.push({
+  el,x,y,
+  vx:Math.cos(a)*1.35,
+  vy:Math.sin(a)*1.35,
+  file
+ });
+}
+
+function syncPhotos(m){
+ photoSpeed=.65+(+m)*.015+(+m>=55?(+m-54)*.28:0);
+
+ for(let n=1;n<=+m;n++)addPhoto(n);
+
+ nextPhoto=+m+1;
+}
+
+function showResult(file,duration=3500){
+ $("hero").src=file;
+ $("bubble").classList.remove("pop");
+ $("spot").classList.add("show");
+
+ setTimeout(()=>$("bubble").classList.add("pop"),120);
+
+ setTimeout(()=>{
+  $("bubble").classList.remove("pop");
+  $("spot").classList.remove("show");
+ },duration);
+}
+
+function minuteChanged(t){
+ photoSpeed=.65+(+t.m)*.015+(+t.m>=55?(+t.m-54)*.28:0);
+
+ if(t.m==="00"){
+  const file=photos.length
+   ?photos[Math.floor(Math.random()*photos.length)].file
+   :`${pad(Math.max(1,Math.min(60,nextPhoto-1||1)))}.png`;
+
+  photos.forEach(p=>p.el.classList.add("fade-out"));
+
+  setTimeout(()=>{
+   photos.forEach(p=>p.el.remove());
+   photos=[];
+   nextPhoto=1;
+   photoSpeed=.65;
+  },1200);
+
+  setTimeout(()=>showResult(file,3000),1000);
+
+ }else if(nextPhoto<=60){
+  addPhoto(nextPhoto++);
+ }
+}
+
+function checkTicketSuccess(){
+ if(!ticketTime||ticketDone)return;
+
+ const left=remainingToTicket();
+
+ if(previousRemaining!==null&&previousRemaining<=1&&left>=86398){
+  ticketDone=true;
+  showResult(`${pad(Math.floor(Math.random()*60)+1)}.png`);
+ }
+
+ previousRemaining=left;
+}
+
+function movePhotos(){
+ const b=$("clockBox").getBoundingClientRect();
+ const r=56;
+
+ const edges=[
+  b.left-r,b.right+r,
+  b.top-r,b.bottom+r
+ ];
+
+ for(const p of photos){
+  p.x+=p.vx*photoSpeed;
+  p.y+=p.vy*photoSpeed;
+
+  if(p.x<r){p.x=r;p.vx=Math.abs(p.vx)}
+  else if(p.x>innerWidth-r){p.x=innerWidth-r;p.vx=-Math.abs(p.vx)}
+
+  if(p.y<r){p.y=r;p.vy=Math.abs(p.vy)}
+  else if(p.y>innerHeight-r){p.y=innerHeight-r;p.vy=-Math.abs(p.vy)}
+
+  if(p.x>edges[0]&&p.x<edges[1]&&p.y>edges[2]&&p.y<edges[3]){
+   const ds=[
+    Math.abs(p.x-edges[0]),
+    Math.abs(edges[1]-p.x),
+    Math.abs(p.y-edges[2]),
+    Math.abs(edges[3]-p.y)
+   ];
+
+   const i=ds.indexOf(Math.min(...ds));
+
+   if(i===0){p.x=edges[0];p.vx=-Math.abs(p.vx)}
+   else if(i===1){p.x=edges[1];p.vx=Math.abs(p.vx)}
+   else if(i===2){p.y=edges[2];p.vy=-Math.abs(p.vy)}
+   else{p.y=edges[3];p.vy=Math.abs(p.vy)}
+  }
+
+  p.el.style.left=`${p.x}px`;
+  p.el.style.top=`${p.y}px`;
+ }
+}
+
+function loop(now){
+ const t=getNow();
+ const left=remainingToTicket();
+
+ ticketUrgent=left<=120;
+ checkTicketSuccess();
+
+ const sig=`${t.h}:${t.m}:${t.s}`;
+ const minute=`${t.h}:${t.m}`;
+
+ if(minute!==lastMin){
+  lastMin=minute;
+  minuteChanged(t);
+ }
+
+ if(sig!==lastSig){
+  lastSig=sig;
+  if(!assembling)updateClock(t,now);
+ }
+
+ ctx.clearRect(0,0,cvs.width,cvs.height);
+
+ const elapsed=(now-t0)/1000;
+ const drift=now*.0015;
+ let waiting=false;
+
+ for(const d of dots){
+  let x,y,alpha=1;
+
+  if(assembling){
+   const k=Math.min(1,Math.max(0,(elapsed-d.delay)/d.dur));
+
+   if(k<=0){waiting=true;continue}
+   if(k<1)waiting=true;
+
+   const e=1-Math.pow(1-k,3);
+
+   x=d.sx+(d.tx-d.sx)*e;
+   y=d.sy+(d.ty-d.sy)*e;
+   alpha=Math.min(1,k*1.5);
+
+  }else if(d.moveStart){
+   const k=Math.min(1,(now-d.moveStart)/(d.dur*1000));
+   const e=1-Math.pow(1-k,3);
+
+   x=d.sx+(d.tx-d.sx)*e;
+   y=d.sy+(d.ty-d.sy)*e;
+
+   if(k>=1)delete d.moveStart;
+
+  }else{
+   x=d.tx+Math.cos(drift+d.phase)*.45;
+   y=d.ty+Math.sin(drift+d.phase)*.45;
+  }
+
+  ctx.globalAlpha=alpha;
+  ctx.fillStyle=d.color;
+  ctx.beginPath();
+  ctx.arc(x,y,1.8,0,Math.PI*2);
+  ctx.fill();
+ }
+
+ ctx.globalAlpha=1;
+
+ if(assembling&&!waiting)assembling=false;
+
+ movePhotos();
+ requestAnimationFrame(loop);
+}
+
+$("country").onchange=e=>{
+ tz=e.target.value;
+ lastSig="";
+ lastMin="";
+
+ if(ticketTime)previousRemaining=remainingToTicket();
+};
+
+$("ticketForm").addEventListener("submit",e=>{
+ e.preventDefault();
+
+ const value=$("ticketTime").value;
+ if(!value)return;
+
+ ticketTime=value.length===5?`${value}:00`:value;
+ $("ticketTimeText").textContent=ticketTime;
+
+ ticketDone=false;
+ previousRemaining=remainingToTicket();
+
+ $("ticketPrompt").classList.remove("show");
+ $("ticketPrompt").classList.add("hide");
+ $("stage").classList.add("locked");
+
+ step=4;
+
+ setTimeout(()=>{
+  $("clockStage").classList.add("active");
+  $("ticketInfo").classList.add("show");
+
+  const now=getNow();
+
+  lastSig=`${now.h}:${now.m}:${now.s}`;
+  lastMin=`${now.h}:${now.m}`;
+
+  const m=+now.m;
+
+  photoSpeed=.65+m*.015+(m>=55?(m-54)*.28:0);
+
+  buildClock(now);
+  requestAnimationFrame(loop);
+
+  setTimeout(()=>$("countryWrap").classList.add("show"),1200);
+
+  setTimeout(()=>{
+   if(now.m!=="00")syncPhotos(now.m);
+  },1400);
+
+ },750);
+});
+
+$("stage").onclick=()=>{
+ if(step===0){
+  step=1;
+  $("stage").classList.add("locked");
+  $("watchWrap").classList.add("exit");
+
+  setTimeout(()=>{
+   $("phrase").classList.add("rise");
+   step=2;
+   $("stage").classList.remove("locked");
+  },1200);
+
+ }else if(step===2){
+  step=3;
+  $("stage").classList.add("locked");
+  $("phrase").classList.add("gone");
+
+  setTimeout(()=>{
+   $("ticketPrompt").classList.add("show");
+   $("stage").classList.remove("locked");
+  },650);
+ }
+};
+</script>
+</body>
+</html>
